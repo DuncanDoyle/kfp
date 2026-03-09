@@ -26,7 +26,7 @@ Kgateway translates Kubernetes [Gateway API](https://gateway-api.sigs.k8s.io/) r
 ## Installation
 
 ```bash
-go install github.com/kgateway-dev/kfp/cmd/kfp@latest
+go install github.com/DuncanDoyle/kfp/cmd/kfp@latest
 ```
 
 Or build from source:
