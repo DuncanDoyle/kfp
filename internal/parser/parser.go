@@ -3,6 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	"github.com/DuncanDoyle/kfp/internal/model"
 )
@@ -432,6 +433,19 @@ func cloneRouteConfig(rc *model.RouteConfig) *model.RouteConfig {
 			if r.Rewrite != nil {
 				rw := *r.Rewrite
 				cloneRoute.Rewrite = &rw
+			}
+			// Deep-copy map fields so mutations in later phases (e.g. Phase 2 filter expansion)
+			// cannot corrupt other HCMs that share the same route_config_name.
+			// Values are opaque JSON (any) and are only read by the renderer, so shallow value copy is safe.
+			if r.TypedPerFilterConfig != nil {
+				tpfc := make(map[string]any, len(r.TypedPerFilterConfig))
+				maps.Copy(tpfc, r.TypedPerFilterConfig)
+				cloneRoute.TypedPerFilterConfig = tpfc
+			}
+			if r.Metadata != nil {
+				meta := make(map[string]any, len(r.Metadata))
+				maps.Copy(meta, r.Metadata)
+				cloneRoute.Metadata = meta
 			}
 			cloneVH.Routes[j] = cloneRoute
 		}

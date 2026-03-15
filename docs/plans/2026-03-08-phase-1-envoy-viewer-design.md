@@ -105,25 +105,43 @@ type VirtualHost struct {
 type Route struct {
     Name                    string
     Match                   RouteMatch
-    Cluster                 string           // backend cluster name
-    MirrorClusters          []string         // request_mirror_policies cluster names (Phase 1.1)
+    Cluster                 string            // backend cluster name
+    Rewrite                 *RouteRewrite     // path rewrite for URLRewrite HTTPRouteFilter (Phase 1.2)
+    MirrorClusters          []string          // request_mirror_policies cluster names (Phase 1.1)
     RequestHeadersToAdd     []HeaderOperation // request_headers_to_add (Phase 1.1)
     ResponseHeadersToAdd    []HeaderOperation // response_headers_to_add (Phase 1.1)
-    ResponseHeadersToRemove []string         // response_headers_to_remove (Phase 1.1)
-    TypedPerFilterConfig    map[string]any   // per-route filter config (Phase 2)
-    Metadata                map[string]any   // filter_metadata (Phase 4)
+    ResponseHeadersToRemove []string          // response_headers_to_remove (Phase 1.1)
+    TypedPerFilterConfig    map[string]any    // per-route filter config (Phase 2)
+    Metadata                map[string]any    // filter_metadata (Phase 4)
+}
+
+// RouteRewrite captures path rewrite configuration on a route action.
+// Kgateway expresses URLRewrite HTTPRouteFilters as a regex_rewrite in the Envoy route action.
+type RouteRewrite struct {
+    RegexPattern string // regex_rewrite.pattern.regex
+    Substitution string // regex_rewrite.substitution
 }
 
 type RouteMatch struct {
-    Prefix  string
-    Path    string
-    Regex   string
-    Headers []HeaderMatch
+    Prefix              string            // prefix match
+    PathSeparatedPrefix string            // path_separated_prefix match (used by URLRewrite scenarios) (Phase 1.2)
+    Path                string            // exact path match
+    Regex               string            // safe_regex match (Phase 1.2)
+    Headers             []HeaderMatch
+    QueryParams         []QueryParamMatch // query parameter match conditions (Phase 1.2)
 }
 
 type HeaderMatch struct {
     Name  string
     Value string
+    Regex bool   // true when Value is a safe_regex pattern (Phase 1.2)
+}
+
+// QueryParamMatch is a query parameter match condition on a route. (Phase 1.2)
+type QueryParamMatch struct {
+    Name  string
+    Value string
+    Regex bool // true when Value is a safe_regex pattern
 }
 
 // HeaderOperation is a key/value header added to a request or response.
@@ -233,16 +251,24 @@ Phase 1 does NOT need: `controller-runtime`, `gateway-api`, `bubbletea` (static 
 
 Unit tests use the real config dump fixtures from `testdata/scenarios/`:
 - `01-simple/envoy/config_dump.json` — single HTTP listener, no policies
+- `01_1` through `01_9` — matcher scenarios covering all RouteMatch types and combinations (Phase 1.2)
 - `02_1-single-policy/envoy/config_dump.json` — HTTPS listener with two filter chains (SNI), transformation filter
 - `02_2-single-policy/envoy/config_dump.json` — RequestHeaderModifier (route-level `request_headers_to_add`)
 - `02_3-single-policy/envoy/config_dump.json` — ResponseHeaderModifier (route-level `response_headers_to_add` / `response_headers_to_remove`)
 - `02_4-single-policy/envoy/config_dump.json` — RequestMirror (route-level `request_mirror_policies`)
+- `02_5-single-policy/envoy/config_dump.json` — URLRewrite (`regex_rewrite` / `path_separated_prefix`) (Phase 1.2)
+- `02_6-single-policy/envoy/config_dump.json` — CORS (EKTP via `typed_per_filter_config`)
 - `02_7-single-policy/envoy/config_dump.json` — ext_authz filter (multiple HCM filters)
+- `02_8-single-policy/envoy/config_dump.json` — RateLimit (EKTP) (Phase 1.2)
 
 Tests verify:
 - Parser correctly extracts listeners, filter chains, HCM filters, and joins RDS
 - Parser extracts route-level header modifications and mirror policies (Phase 1.1)
+- Parser captures `path_separated_prefix`, `safe_regex`, regex headers, and query parameters (Phase 1.2)
+- Parser captures `regex_rewrite` into `RouteRewrite` (Phase 1.2)
 - Renderer output contains expected listener names, VirtualHost domains, filter names, cluster names
 - Renderer shows "Route Policies" block for header/mirror configs (Phase 1.1)
+- Renderer shows URLRewrite rewrite details in route output (Phase 1.2)
+- Renderer shows correct match type labels for `path_separated_prefix`, `safe_regex`, regex headers, and query params (Phase 1.2)
 - Renderer does not show a filter as "(disabled)" when it is active on the route via `typed_per_filter_config` (Phase 1.1)
 - Error cases: malformed JSON, missing RDS references

@@ -286,3 +286,184 @@ func TestRender_EmptySnapshot(t *testing.T) {
 		t.Errorf("expected 'No listeners' message for empty snapshot, got:\n%s", output)
 	}
 }
+
+// TestRender_RoutePolicies_URLRewrite verifies that a route with a regex_rewrite
+// (URLRewrite HTTPRouteFilter) is rendered with a "rewrite:" policy line.
+// Covers issue #9.
+func TestRender_RoutePolicies_URLRewrite(t *testing.T) {
+	snapshot := &model.EnvoySnapshot{
+		Listeners: []model.Listener{
+			{
+				Name:    "listener~80",
+				Address: "[::]:80",
+				FilterChains: []model.NetworkFilterChain{
+					{
+						HCM: &model.HCMConfig{
+							RouteConfigName: "listener~80",
+							HTTPFilters:     []model.HTTPFilter{{Name: "envoy.filters.http.router"}},
+							RouteConfig: &model.RouteConfig{
+								Name: "listener~80",
+								VirtualHosts: []model.VirtualHost{
+									{
+										Name:    "vh",
+										Domains: []string{"api.example.com"},
+										Routes: []model.Route{
+											{
+												Match:   model.RouteMatch{PathSeparatedPrefix: "/api/v1"},
+												Cluster: "kube_default_httpbin_8000",
+												Rewrite: &model.RouteRewrite{
+													RegexPattern: "^/api/v1(/.*)?$",
+													Substitution: "/v1\\1",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	output := renderer.Render(snapshot)
+
+	checks := []string{
+		"Route Policies",
+		"rewrite:",
+		"^/api/v1(/.*)?$",
+		"/v1\\1",
+	}
+	for _, s := range checks {
+		if !strings.Contains(output, s) {
+			t.Errorf("expected output to contain %q\nOutput:\n%s", s, output)
+		}
+	}
+}
+
+// TestRender_MatchTypes_PathSeparatedPrefix verifies that a route with a
+// path_separated_prefix match is rendered with "(path-prefix)" label.
+// Covers issue #10.
+func TestRender_MatchTypes_PathSeparatedPrefix(t *testing.T) {
+	snapshot := routeSnapshotWithMatch(model.RouteMatch{PathSeparatedPrefix: "/api/v1"})
+	output := renderer.Render(snapshot)
+
+	if !strings.Contains(output, "/api/v1") {
+		t.Errorf("expected path value in output\nOutput:\n%s", output)
+	}
+	if !strings.Contains(output, "path-prefix") {
+		t.Errorf("expected 'path-prefix' label in output\nOutput:\n%s", output)
+	}
+}
+
+// TestRender_MatchTypes_Regex verifies that a route with a safe_regex path match
+// is rendered with "(regex)" label.
+// Covers issue #10.
+func TestRender_MatchTypes_Regex(t *testing.T) {
+	snapshot := routeSnapshotWithMatch(model.RouteMatch{Regex: "^/api/v[0-9]+/.*$"})
+	output := renderer.Render(snapshot)
+
+	if !strings.Contains(output, "^/api/v[0-9]+/.*$") {
+		t.Errorf("expected regex value in output\nOutput:\n%s", output)
+	}
+	if !strings.Contains(output, "regex") {
+		t.Errorf("expected 'regex' label in output\nOutput:\n%s", output)
+	}
+}
+
+// TestRender_MatchTypes_HeaderExact verifies that an exact header match is rendered
+// with "header(name=value)" notation.
+// Covers issue #10.
+func TestRender_MatchTypes_HeaderExact(t *testing.T) {
+	snapshot := routeSnapshotWithMatch(model.RouteMatch{
+		Prefix:  "/api",
+		Headers: []model.HeaderMatch{{Name: "x-env", Value: "prod"}},
+	})
+	output := renderer.Render(snapshot)
+
+	if !strings.Contains(output, "header(x-env=prod)") {
+		t.Errorf("expected 'header(x-env=prod)' in output\nOutput:\n%s", output)
+	}
+}
+
+// TestRender_MatchTypes_HeaderRegex verifies that a regex header match is rendered
+// with "header(name~value)" notation.
+// Covers issue #10.
+func TestRender_MatchTypes_HeaderRegex(t *testing.T) {
+	snapshot := routeSnapshotWithMatch(model.RouteMatch{
+		Prefix:  "/api",
+		Headers: []model.HeaderMatch{{Name: "x-env", Value: "prod.*", Regex: true}},
+	})
+	output := renderer.Render(snapshot)
+
+	if !strings.Contains(output, "header(x-env~prod.*)") {
+		t.Errorf("expected 'header(x-env~prod.*)' in output\nOutput:\n%s", output)
+	}
+}
+
+// TestRender_MatchTypes_QueryParamExact verifies that an exact query parameter match
+// is rendered with "query(name=value)" notation.
+// Covers issue #10.
+func TestRender_MatchTypes_QueryParamExact(t *testing.T) {
+	snapshot := routeSnapshotWithMatch(model.RouteMatch{
+		Prefix:      "/search",
+		QueryParams: []model.QueryParamMatch{{Name: "q", Value: "hello"}},
+	})
+	output := renderer.Render(snapshot)
+
+	if !strings.Contains(output, "query(q=hello)") {
+		t.Errorf("expected 'query(q=hello)' in output\nOutput:\n%s", output)
+	}
+}
+
+// TestRender_MatchTypes_QueryParamRegex verifies that a regex query parameter match
+// is rendered with "query(name~value)" notation.
+// Covers issue #10.
+func TestRender_MatchTypes_QueryParamRegex(t *testing.T) {
+	snapshot := routeSnapshotWithMatch(model.RouteMatch{
+		Prefix:      "/search",
+		QueryParams: []model.QueryParamMatch{{Name: "q", Value: "hel.*", Regex: true}},
+	})
+	output := renderer.Render(snapshot)
+
+	if !strings.Contains(output, "query(q~hel.*)") {
+		t.Errorf("expected 'query(q~hel.*)' in output\nOutput:\n%s", output)
+	}
+}
+
+// routeSnapshotWithMatch constructs a minimal EnvoySnapshot with one route using the given match.
+// Shared helper for match-type renderer tests.
+func routeSnapshotWithMatch(match model.RouteMatch) *model.EnvoySnapshot {
+	return &model.EnvoySnapshot{
+		Listeners: []model.Listener{
+			{
+				Name:    "listener~80",
+				Address: "[::]:80",
+				FilterChains: []model.NetworkFilterChain{
+					{
+						HCM: &model.HCMConfig{
+							RouteConfigName: "listener~80",
+							HTTPFilters:     []model.HTTPFilter{{Name: "envoy.filters.http.router"}},
+							RouteConfig: &model.RouteConfig{
+								Name: "listener~80",
+								VirtualHosts: []model.VirtualHost{
+									{
+										Name:    "vh",
+										Domains: []string{"api.example.com"},
+										Routes: []model.Route{
+											{
+												Match:   match,
+												Cluster: "kube_default_httpbin_8000",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}

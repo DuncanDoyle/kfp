@@ -13,7 +13,7 @@ Each phase has its own design and implementation document pair in `docs/plans/`.
 ## Phases
 
 ### Phase 1 — Envoy Config Viewer
-**Status:** Designing
+**Status:** Complete (patch cycles 1.1, 1.2, 1.3 applied)
 **Docs:** `phase-1-envoy-viewer-design.md`, `phase-1-envoy-viewer-implementation.md`
 
 CLI that parses a raw Envoy config dump (from file or live port-forward) and renders the complete structure: listeners, network-level filter chains, HCM, RDS route configs, virtual hosts, routes, HTTP filter pipeline, and backend clusters. No K8S awareness. Static TUI output.
@@ -81,7 +81,7 @@ Real K8S + Envoy config pairs in `testdata/scenarios/`:
 | 02_5-single-policy | HTTP, URLRewrite (native K8S filter) | Yes |
 | 02_6-single-policy | HTTP, CORS (EKTP) | Yes |
 | 02_7-single-policy | HTTP, ExtAuth (EKTP) | Yes |
-| 02_8-single-policy | HTTP, RateLimit (EKTP) | Not yet |
-| 03-multi-policy | Multiple policies on one route | Not yet |
-| 04-multi-rule | One route, multiple rules/backends | Not yet |
-| 05-multi-listener | Gateway with HTTP + HTTPS listeners | Not yet |
+| 02_8-single-policy | HTTP, RateLimit (EKTP) | Yes |
+| 03-multi-policy | Multiple policies on one route | No |
+| 04-multi-rule | One route, multiple rules/backends | No |
+| 05-multi-listener | Gateway with HTTP + HTTPS listeners | No |
